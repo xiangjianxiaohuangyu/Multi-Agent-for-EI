@@ -7,9 +7,8 @@
 
 当前阶段的 ``act`` 主流程：
 
-    0. Trigger                              ────  判断要不要走决策
-    1. Reason.recognize_intent_and_plan     ────  让模型识别意图并给候选动作（仅作信息收集）
-    # 下一步：Reason.reasoning_and_decision ────  综合推理 + 拍板（暂未接入 act）
+    0. Trigger                    ────  判断要不要走决策
+    1. PlannerAgent.plan           ────  让模型识别意图并给候选任务（含所需 L3 工具）
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from typing import Any, Dict, Optional
 
 from L2_cognition.cognition import Cognition
 
-from .reason import Reason
+from .planner_agent import PlannerAgent
 from .trigger import Trigger
 
 __all__ = ["Agent"]
@@ -31,23 +30,23 @@ class Agent:
         self,
         cognition: Cognition,
         trigger: Optional[Trigger] = None,
-        reason: Optional[Reason] = None,
-        reason_url: Optional[str] = None,
-        reason_model: Optional[str] = None,
-        reason_timeout: Optional[float] = None,
+        planner: Optional[PlannerAgent] = None,
+        planner_url: Optional[str] = None,
+        planner_model: Optional[str] = None,
+        planner_timeout: Optional[float] = None,
         experience_topk: int = 5,  # noqa: ARG002 - 暂存，等 Retriever 重建后启用
     ) -> None:
         self._cognition = cognition
         self._experience_topk = experience_topk
         self._trigger: Trigger = trigger if trigger is not None else Trigger()
-        # 没传完整的 Reason 时，用可选 kwarg 构造一个；都缺就走 Reason 的默认配置
-        if reason is not None:
-            self._reason: Reason = reason
+        # 没传完整的 PlannerAgent 时，用可选 kwarg 构造一个；都缺就走其默认配置
+        if planner is not None:
+            self._planner: PlannerAgent = planner
         else:
-            self._reason = Reason(
-                url=reason_url or Reason.DEFAULT_URL,
-                model=reason_model or Reason.DEFAULT_MODEL,
-                timeout=Reason.DEFAULT_TIMEOUT if reason_timeout is None else float(reason_timeout),
+            self._planner = PlannerAgent(
+                url=planner_url or PlannerAgent.DEFAULT_URL,
+                model=planner_model or PlannerAgent.DEFAULT_MODEL,
+                timeout=PlannerAgent.DEFAULT_TIMEOUT if planner_timeout is None else float(planner_timeout),
             )
 
     # ------------------------------------------------------------------ 入口
@@ -63,7 +62,7 @@ class Agent:
         Returns
         -------
         dict
-            当前阶段直接把 ``Reason.recognize_intent_and_plan`` 的回复原样返回；
+            当前阶段直接把 ``PlannerAgent.plan`` 的回复原样返回；
             结构为 ``{"status": "ok"|"error", "text"|"error": ..., "model": ...}``。
 
         Note
@@ -80,5 +79,5 @@ class Agent:
                 "inputs": {},
             }
 
-        # 1. 让模型先做"意图识别 + 候选动作规划"（两个推理入口中的第一个）
-        return self._reason.recognize_intent_and_plan(perception_snapshot)
+        # 1. 让模型先做"意图识别 + 候选动作规划"
+        return self._planner.plan(perception_snapshot)
